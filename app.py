@@ -1,7 +1,6 @@
 import streamlit as st
 import requests
 from bs4 import BeautifulSoup
-import google.generativeai as genai
 
 # --- 1. THE WEB SCRAPER ---
 def scrape_article(url):
@@ -23,14 +22,14 @@ def scrape_article(url):
     except Exception as e:
         return f"Scraping failed: {str(e)}"
 
-# --- 2. CLOUD GEMINI NEWSROOM ENGINE ---
-def summarize_with_gemini(text, api_key, model_choice):
+# --- 2. FREE CLOUD NEWSROOM ENGINE (GROQ LLAMA 70B) ---
+def summarize_with_free_cloud(text, api_key):
     try:
-        # Configure the Google Gemini SDK
-        genai.configure(api_key=api_key)
-        
-        # Dynamically load the chosen model
-        model = genai.GenerativeModel(model_choice)
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
         
         combined_prompt = (
             "آپ ایک سینئر ٹی وی نیوز روم ایڈیٹر ہیں۔ دی گئی خبر کو پڑھیں اور اس کا مکمل اردو پیکیج تیار کریں۔\n\n"
@@ -45,7 +44,7 @@ def summarize_with_gemini(text, api_key, model_choice):
             "وی او (VO= Voice over)\n"
             "گوجرانوالہ میں ایڈووکیٹ قاسم بھٹی کی جانب سے دائر درخواست میں موقف اختیار کیا گیا ہے کہ مولانا فضل الرحمان نے متنازع بیانات دیے۔ ایڈیشنل سیشن جج فضا احمد نے ابتدائی سماعت کے بعد پولیس کو نوٹس جاری کر دیا۔ عدالت نے متعلقہ تھانے کو حکم دیا ہے کہ وہ اٹھائیس جولائی تک تفصیلی رپورٹ جمع کروائیں۔\n\n"
             "ہیڈ لائن (Headline)\n"
-            "فوج مخالف تقریر پر مولانا فضل الرحمان کے خلاف مقدمے کی درخواست دائر، عدالت نے پولیس سے اٹھائیس جولائی تک رپورٹ طلب کر لی۔\n\n"
+            "فوج مخالف تقریر پر مولانا فضل الرحمان کے خلاف مقدمے کی درخواست دائر, عدالت نے پولیس سے اٹھائیس جولائی تک رپورٹ طلب کر لی۔\n\n"
             "تین سی جی (CG= Lower Third)\n"
             "* مولانا فضل الرحمان کے خلاف درخواست دائر\n"
             "* فوج مخالف تقریر پر مقدمے کی درخواست\n"
@@ -54,32 +53,35 @@ def summarize_with_gemini(text, api_key, model_choice):
             f"اب اس اصل خبر کا پیکیج اوپر دیے گئے طریقے کے مطابق بنائیں:\n\n{text}"
         )
         
-        generation_config = genai.types.GenerationConfig(
-            temperature=0.0
-        )
+        payload = {
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": combined_prompt}],
+            "temperature": 0.0,
+            "stream": False
+        }
         
-        response = model.generate_content(combined_prompt, generation_config=generation_config)
-        return response.text
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
         
+        if response.status_code == 200:
+            return response.json()['choices'][0]['message']['content'].strip()
+        else:
+            return f"Cloud Engine Error ({response.status_code}): {response.text}"
+            
     except Exception as e:
-        return f"Gemini API Error: {str(e)}"
+        return f"Cloud Connection Failed: {str(e)}"
 
 # --- 3. THE JOURNALIST WEB INTERFACE ---
-st.set_page_config(page_title="Cloud News Room App", page_icon="🌐", layout="centered")
+st.set_page_config(page_title="Free Cloud News Room App", page_icon="📺", layout="centered")
 
-st.title("🌐 کلاؤڈ جرنلسٹ نیوز روم ایپ")
-st.write("یہ ایپ کلاؤڈ میں گوگل جیمنائ (Gemini Cloud Engine) پر چل رہی ہے۔")
+st.title("📺 جرنلسٹ نیوز روم ایپ")
+st.write("کسی بھی انگریزی یا اردو خبر کا لنک یا ٹیکسٹ نیچے پیسٹ کریں اور پیکیج تیار کریں۔")
 
-# Sidebar Configuration
-st.sidebar.title("🔑 سیکیورٹی اور ماڈل سیٹنگز")
-user_api_key = st.sidebar.text_input("اپنی Gemini API Key یہاں پیسٹ کریں:", type="password")
-
-# Added a dropdown choice so you can toggle models if one gives a 404 error
-selected_model = st.sidebar.selectbox(
-    "اے آئی ماڈل منتخب کریں:",
-    ("gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro")
-)
-st.sidebar.info("نوٹ: اگر پرو (Pro) ماڈل ایرر دے، تو فلیش (Flash) ماڈل استعمال کریں، وہ زیادہ مستحکم ہے۔")
+# Verifying the hidden background key
+if "GROQ_API_KEY" in st.secrets:
+    cloud_api_key = st.secrets["GROQ_API_KEY"]
+else:
+    st.error("سسٹم سیٹ اپ نامکمل ہے! براہ کرم اسٹریم لٹ ڈیش بورڈ میں پش بیک کی سیٹ کریں۔")
+    st.stop()
 
 option = st.radio("ان پٹ کا طریقہ منتخب کریں:", ("خبر کا لنک (URL)", "ٹیکسٹ یا ٹکرز پیسٹ کریں"))
 
@@ -89,12 +91,10 @@ else:
     user_input = st.text_area("یہاں خبر کا ٹیکسٹ یا ٹکرز پیسٹ کریں:", height=200)
 
 if st.button("پیکیج تیار کریں", type="primary"):
-    if not user_api_key.strip():
-        st.error("مہربانی فرما کر بائیں ہاتھ والے ڈبے (Sidebar) میں اپنی Gemini API Key درج کریں۔")
-    elif not user_input.strip():
+    if not user_input.strip():
         st.warning("مہربانی فرما کر پہلے کوئی لنک یا ٹیکسٹ لکھیں!")
     else:
-        with st.spinner(f"گوگل {selected_model} پیکیج تیار کر رہا ہے..."):
+        with st.spinner("کلاؤڈ اے آئی (AI) نیوز پیکیج تیار کر رہا ہے..."):
             if option == "خبر کا لنک (URL)":
                 content = scrape_article(user_input)
                 if content.startswith("Error") or content.startswith("Scraping failed"):
@@ -103,9 +103,9 @@ if st.button("پیکیج تیار کریں", type="primary"):
             else:
                 content = user_input
             
-            final_output = summarize_with_gemini(content, user_api_key, selected_model)
+            final_output = summarize_with_free_cloud(content, cloud_api_key)
             
-            st.success("نیوز پیکیج کلاؤڈ سے تیار ہو کر آ گیا ہے!")
+            st.success("نیوز پیکیج کامیابی کے ساتھ تیار ہے!")
             st.divider()
             st.subheader("📰 فائنل براڈکاسٹ ڈیٹا")
-            st.text_area("کاپی کرنے کے لیے نیچے سلیکٹ کریں:", value=final_output, height=450)
+            st.text_area("کاپی کرنے کے لیے نیچے دیے گئے ٹیکسٹ کو سلیکٹ کریں:", value=final_output, height=450)
