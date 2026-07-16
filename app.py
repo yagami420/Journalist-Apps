@@ -23,14 +23,14 @@ def scrape_article(url):
     except Exception as e:
         return f"Scraping failed: {str(e)}"
 
-# --- 2. CLOUD GEMINI PRO NEWSROOM ENGINE ---
-def summarize_with_gemini(text, api_key):
+# --- 2. CLOUD GEMINI NEWSROOM ENGINE ---
+def summarize_with_gemini(text, api_key, model_choice):
     try:
-        # Configure the Google Gemini SDK with the user's API Key
+        # Configure the Google Gemini SDK
         genai.configure(api_key=api_key)
         
-        # Use Gemini 1.5 Pro or Gemini 2.5 Pro depending on your account workspace availability
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        # Dynamically load the chosen model
+        model = genai.GenerativeModel(model_choice)
         
         combined_prompt = (
             "آپ ایک سینئر ٹی وی نیوز روم ایڈیٹر ہیں۔ دی گئی خبر کو پڑھیں اور اس کا مکمل اردو پیکیج تیار کریں۔\n\n"
@@ -54,7 +54,6 @@ def summarize_with_gemini(text, api_key):
             f"اب اس اصل خبر کا پیکیج اوپر دیے گئے طریقے کے مطابق بنائیں:\n\n{text}"
         )
         
-        # Generation configuration to lock creativity (similar to temperature 0)
         generation_config = genai.types.GenerationConfig(
             temperature=0.0
         )
@@ -69,12 +68,18 @@ def summarize_with_gemini(text, api_key):
 st.set_page_config(page_title="Cloud News Room App", page_icon="🌐", layout="centered")
 
 st.title("🌐 کلاؤڈ جرنلسٹ نیوز روم ایپ")
-st.write("یہ ایپ کلاؤڈ میں گوگل جیمنائ پرو (Gemini Pro) انجن پر چل رہی ہے۔")
+st.write("یہ ایپ کلاؤڈ میں گوگل جیمنائ (Gemini Cloud Engine) پر چل رہی ہے۔")
 
-# Sidebar Configuration for Security Keys
-st.sidebar.title("🔑 سیکیورٹی سیٹنگز")
+# Sidebar Configuration
+st.sidebar.title("🔑 سیکیورٹی اور ماڈل سیٹنگز")
 user_api_key = st.sidebar.text_input("اپنی Gemini API Key یہاں پیسٹ کریں:", type="password")
-st.sidebar.info("یہ کی (Key) عارضی طور پر صرف آپ کے براؤزر سیشن کے لیے استعمال ہوگی۔")
+
+# Added a dropdown choice so you can toggle models if one gives a 404 error
+selected_model = st.sidebar.selectbox(
+    "اے آئی ماڈل منتخب کریں:",
+    ("gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro")
+)
+st.sidebar.info("نوٹ: اگر پرو (Pro) ماڈل ایرر دے، تو فلیش (Flash) ماڈل استعمال کریں، وہ زیادہ مستحکم ہے۔")
 
 option = st.radio("ان پٹ کا طریقہ منتخب کریں:", ("خبر کا لنک (URL)", "ٹیکسٹ یا ٹکرز پیسٹ کریں"))
 
@@ -89,7 +94,7 @@ if st.button("پیکیج تیار کریں", type="primary"):
     elif not user_input.strip():
         st.warning("مہربانی فرما کر پہلے کوئی لنک یا ٹیکسٹ لکھیں!")
     else:
-        with st.spinner("گوگل جیمنائ پرو (Gemini Cloud) پیکیج تیار کر رہا ہے..."):
+        with st.spinner(f"گوگل {selected_model} پیکیج تیار کر رہا ہے..."):
             if option == "خبر کا لنک (URL)":
                 content = scrape_article(user_input)
                 if content.startswith("Error") or content.startswith("Scraping failed"):
@@ -98,8 +103,7 @@ if st.button("پیکیج تیار کریں", type="primary"):
             else:
                 content = user_input
             
-            # Execute Cloud AI Function
-            final_output = summarize_with_gemini(content, user_api_key)
+            final_output = summarize_with_gemini(content, user_api_key, selected_model)
             
             st.success("نیوز پیکیج کلاؤڈ سے تیار ہو کر آ گیا ہے!")
             st.divider()
